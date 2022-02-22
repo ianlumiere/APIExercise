@@ -3,75 +3,137 @@ import json
 
 app = Flask(__name__)
 
-mock_list_db = [
-    {
-        "name": "Mew",
-        "level": 5,
-        "in_party": True
+db = {
+    "bellevue": {
+        "buildings": {
+            "a": {"b": 1},
+            "b": {"a": 5}
+        }
     },
-    {
-        "name": "Pikachu",
-        "level": 32,
-        "in_party": True
+    "redmond": {
+        "buildings": {
+            "a": {"b": 5},
+            "b": {
+                "a": 10,
+                "c": 2},
+            "c": {}
+        }
     }
-]
+}
 
-# http://127.0.0.1:5000/
-@app.route("/", methods=['GET', 'POST'])
-def index():
-    # curl -H "Content-Type: application/json" -X POST -d '{"name": "Poliwhirl", "level": 28, "in_party": false}' http://127.0.0.1:5000/
-    if request.method == "POST":
-        json_received = request.get_json()
-        mock_list_db.append(json_received) # add it to the dictionary
-        return jsonify({"JSON Sent": json_received}), 201
+knownDistances = {}
+
+def depth_first_search(mapId, startId, stopId):
+    # if valid return true, else return an error code
+    # https://www.geeksforgeeks.org/depth-first-search-or-dfs-for-a-graph/
+    
+    if True:
+        return True
     else:
-        return "Welcome to the API!", 200
-
-with app.test_client() as c:
-    rv = c.post('/', json={
-        "name": "Poliwhirl", "level": 28, "in_party": False
-    })
-    json_data = rv.get_json()
-    json_data = json.dumps(json_data, sort_keys=True)
-    expected_data = json.dumps({'JSON Sent': {'in_party': False, 'level': 28, 'name': 'Poliwhirl'}}, sort_keys=True)
-    assert json_data == expected_data
+        return False
 
 
-# http://127.0.0.1:5000/pokemon_list
-@app.route("/pokemon_list", methods=['GET'])
-def get_pokemon_list():
-    return jsonify({"Pokemon": mock_list_db}), 200
+def dijkstras(mapId, startId, endId):
+    # build the list of nodes based off of the mapId
+    nodes = []
+    for i in db[mapId]["buildings"]:
+        nodes.append(i)
+
+    # build the dictionary od distances
+    distances = db[mapId]["buildings"]
+    
+    unvisited = {node: None for node in nodes} #using None as +inf
+    visited = {}
+    current = startId
+    currentDistance = 0
+    unvisited[current] = currentDistance
+
+    while True:
+        for neighbour, distance in distances[current].items():
+            if neighbour not in unvisited: continue
+            newDistance = currentDistance + distance
+            if unvisited[neighbour] is None or unvisited[neighbour] > newDistance:
+                unvisited[neighbour] = newDistance
+        visited[current] = currentDistance
+        del unvisited[current]
+        if not unvisited: break
+        candidates = [node for node in unvisited.items() if node[1]]
+        current, currentDistance = sorted(candidates, key = lambda x: x[1])[0]
+    
+    print(visited)
+    # known_distances[mapId][startId] = visited
+    print(type(visited))
+    print(endId)
+    print(type(endId))
+    distanceAnswer = visited[endId]
+    path = []
+
+    return distanceAnswer, path
 
 
-# http://127.0.0.1:5000/pokemon_list/0
-@app.route("/pokemon_list/<int:index>", methods=['GET', 'PUT', 'DELETE'])
-def get_pokemon_by_index(index):
-    # curl -H "Content-Type: application/json" -X PUT -d '{"name": "Mew", "level": 6, "in_party": false}' http://127.0.0.1:5000/pokemon_list/0
-    if request.method == "PUT":
-        json_received = request.get_json()
-        for key in json_received:
-            mock_list_db[index][key] = json_received[key]
-        return jsonify({"Updated results": mock_list_db[index]}), 200
-    # curl -X DELETE http://127.0.0.1:5000/pokemon_list/0
-    if request.method == "DELETE":
-        item_deleted = mock_list_db[index]["name"]
-        del mock_list_db[index]
-        return jsonify({"Deleted": item_deleted}), 204
+# http://127.0.0.1:5000/maps/bellevue/path/A/B
+# Accept: application/json
+@app.route("/maps/<string:mapId>/path/<string:startId>/<string:endId>", methods=['GET'])
+def find_shortest_route(mapId, startId, endId):
+    # input validation
+    # REFACTOR INTO SEPARATE FUNCTION
+    if mapId.isalpha() == True and mapId.lower() in db:
+        pass
     else:
-        return jsonify({"Pokemon": mock_list_db[index]}), 200
+        return {"message": "Map 'mapId' is unknown"}, 400
+    
+    if startId.isalpha() == True and startId.lower() in db[mapId]["buildings"]:
+        pass
+    else:
+        return {"message": "Start 'startId' is unknown"}, 400
+
+    if endId.isalpha() == True and endId.lower() in db[mapId]["buildings"]:
+        pass
+    else:
+        return {"message": "End 'endId' is unknown"}, 400
+
+    mapId = mapId.lower()
+    startId = startId.lower()
+    endId = endId.lower()
+
+    # check memo
+    # if startId in knownDistances[mapId]:
+    #     print("HAPPENED")
+    #     return jsonify({
+    #         "distance": knownDistances[mapId][startId][endId],
+    #         "path": [] # THIS NEEDS TO BE ADDED
+    #     }), 200
+
+    # check if a valid path exists
+    if depth_first_search(mapId, startId, endId) == False:
+        return {"message": "There is no path between 'startId' and 'endId'."}, 400
+
+    # get distance using dijkstra's
+    distanceAnswer, pathAnswer = dijkstras(mapId, startId, endId)
+
+    return jsonify({
+        "distance": distanceAnswer,
+        "path": pathAnswer
+    }), 200
 
 
-# http://127.0.0.1:5000/multiply/5
-@app.route("/multiply_ten/<int:value>", methods=['GET'])
-def multiply_ten(value):
-    return jsonify({"Result": value*10}), 200
-
-
-# http://127.0.0.1:5000/author?name=Ian
-@app.route("/author")
-def get_author():
-    name = request.args.get("name")
-    return jsonify({"data": name}), 200
+# http://127.0.0.1:5000/maps/bellevue
+# Content-Type: application/json
+@app.route("/maps/<string:mapId>", methods=['PUT'])
+def modify_map(mapId):
+    # curl -H "Content-Type: application/json" -X PUT -d '{"buildings": { "a": { "b": 1 }, "b": {"a": 3}}}' http://127.0.0.1:5000/maps/bellevue
+    try:
+        jsonReceived = request.get_json()
+        # IMPROVE BY HANDINGLING PARTIAL UPDATES
+        # if mapId in db:
+        #     # for building in jsonReceived:
+        #     #     db[mapId]
+        db[mapId] = jsonReceived
+        print(db)
+        # knownDistances[mapId] = {}
+        return {}, 204
+    except:
+        return {"message": "The map data is invalid"}, 400
 
 
 if __name__ == "__main__":
